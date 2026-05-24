@@ -21,30 +21,54 @@ struct Token {
     int ival;     // numbers
 };
 
-bool validate(string& in);
-int eval(string& in);
+int eval (string& in);
 int precedence(char op);
 char leftBracket(char right);
 bool tokenize(const string& in, vector<Token>& tokens);
+bool validate(vector<Token>& tokens);
+bool convert(vector<Token>& infix, vector<Token>& postfix);
+void extractVars(vector<Token>& postfix, vector<string>& vars);
 
 
 int main(){
     string in;
     cout << "Enter the expression: ";
     getline(cin, in);
+
+    vector<Token> tokens;
+    if (!tokenize(in, tokens)) return 1;
+
+    if (!validate(tokens)) return 1;
+
+    vector<Token> postfix;
+    if (!convert(tokens, postfix)) return 1;
+
+    string postfixStr = "";
+    for (int i = 0; i < (int)postfix.size(); i++) {
+        postfixStr += postfix[i].sval;
+        if (i != (int)postfix.size() - 1) postfixStr += " ";
+    }
+    cout << postfixStr << endl;
+
+    vector<string> vars;
+    extractVars(postfix, vars);
+
+    map<string, int> varValues;
+    for (int i = 0; i < (int)vars.size(); i++) {
+        cerr << "Enter value for " << vars[i] << ": ";
+        int val;
+        if (!(cin >> val)) {
+            cerr << "Runtime error: invalid value for variable '" << vars[i] << "'" << endl;
+            return 2;
+        }
+        varValues[vars[i]] = val;
+    }
+
+
     return eval(in);
 }
 
-bool validate(){
 
-    return true;
-}
-
-int eval(string& in){
-    vector<string> variables;
-    vector<int> tokens;
-    return 0;
-}
 
 int precedence (char op){
     int res = 0;
@@ -78,7 +102,9 @@ bool tokenize(const string& in, vector<Token>& tokens) {
         }
         else if (isdigit(in[i])) {
             int start = i;
-            while (i < n && isdigit(in[i])) i++;
+            while (i < n && isdigit(in[i])){
+                i++;
+            }
             Token t;
             t.type = 0;
             t.sval = in.substr(start, i - start);
@@ -90,7 +116,9 @@ bool tokenize(const string& in, vector<Token>& tokens) {
         }
         else if (isalpha(in[i]) || in[i] == '_') {
             int start = i;
-            while (i < n && (isalnum(in[i]) || in[i] == '_')) i++;
+            while (i < n && (isalnum(in[i]) || in[i] == '_')){
+                i++;
+            }
             Token t;
             t.type = 1;
             t.sval = in.substr(start, i - start);
@@ -128,4 +156,146 @@ bool tokenize(const string& in, vector<Token>& tokens) {
         }
     }
     return res;
+}
+
+
+bool validate(vector<Token>& tokens) {
+    if (tokens.empty()) {
+        cerr << "Syntax error: empty expression" << endl;
+        return false;
+    }
+
+    stack<char> brackets;
+
+    for (int i = 0; i < (int)tokens.size(); i++) {
+        const Token& t = tokens[i];
+        if (t.type == 3) {
+            brackets.push(t.sval[0]);
+        }
+        else if (t.type == 4) {
+            if (brackets.empty()) {
+                cerr << "Syntax error: lone closing bracket '" << t.sval << "'" << endl;
+                return false;
+            }
+            char expected = leftBracket(t.sval[0]);
+            if (brackets.top() != expected) {
+                cerr << "Syntax error: inalid brackets, expected closing for '" << brackets.top() << "' but got '" << t.sval << "'" << endl;
+                return false;
+            }
+            brackets.pop();
+        }
+    }
+    if (!brackets.empty()) {
+        cerr << "Syntax error: unclosed bracket '" << brackets.top() << "'" << endl;
+        return false;
+    }
+
+    const Token& first = tokens[0];
+    if (first.type != 0 && first.type != 1 && first.type != 3) {
+        cerr << "Syntax error: expression cannot begin with '" << first.sval << "'" << endl;
+        return false;
+    }
+    const Token& last = tokens[tokens.size() - 1];
+    if (last.type != 0 && last.type != 1 && last.type != 4) {
+        cerr << "Syntax error: expression cannot end with '" << last.sval << "'" << endl;
+        return false;
+    }
+
+    for (int i = 0; i + 1 < (int)tokens.size(); i++) {
+        Token& cur = tokens[i];
+        Token& nxt = tokens[i + 1];
+
+        bool curIsOperand = (cur.type == 0 || cur.type == 1);
+        bool curIsOp = (cur.type == 2);
+        bool curIsLeft = (cur.type == 3);
+        bool curIsRight = (cur.type == 4);
+
+        bool nxtIsOperand = (nxt.type == 0 || nxt.type == 1);
+        bool nxtIsOp = (nxt.type == 2);
+        bool nxtIsLeft = (nxt.type == 3);
+        bool nxtIsRight = (nxt.type == 4);
+
+        if (curIsOperand && !(nxtIsOp || nxtIsRight)) {
+            cerr << "Syntax error: operand '" << cur.sval << "' followed by unexpected token '" << nxt.sval << "'" << endl;
+            return false;
+        }
+        if (curIsOp && !(nxtIsOperand || nxtIsLeft)) {
+            cerr << "Syntax error: operator '" << cur.sval << "' followed by unexpected token '" << nxt.sval << "'" << endl;
+            return false;
+        }
+        if (curIsLeft && !(nxtIsOperand || nxtIsLeft)) {
+            cerr << "Syntax error: '" << cur.sval << "' followed by unexpected token '" << nxt.sval << "'" << endl;
+            return false;
+        }
+        if (curIsRight && !(nxtIsOp || nxtIsRight)) {
+            cerr << "Syntax error: '" << cur.sval << "' followed by unexpected token '" << nxt.sval << "'" << endl;
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool convert(vector<Token>& infix, vector<Token>& postfix) {
+    stack<Token> opStack;
+
+    for (int i = 0; i < (int)infix.size(); i++) {
+        Token& t = infix[i];
+
+        if (t.type == 0 || t.type == 1) {
+            postfix.push_back(t);
+        }
+        else if (t.type == 2) {
+            while (!opStack.empty() &&
+                   opStack.top().type == 2 &&
+                   precedence(opStack.top().sval[0]) >= precedence(t.sval[0])) {
+                postfix.push_back(opStack.top());
+                opStack.pop();
+            }
+            opStack.push(t);
+        }
+        else if (t.type == 3) {
+            opStack.push(t);
+        }
+        else if (t.type == 4) {
+            while (!opStack.empty() && opStack.top().type != 3) {
+                postfix.push_back(opStack.top());
+                opStack.pop();
+            }
+            if (opStack.empty()) {
+                cerr << "Syntax error: invalid brackets" << endl;
+                return false;
+            }
+            char expected = leftBracket(t.sval[0]);
+            if (opStack.top().sval[0] != expected) {
+                cerr << "Syntax error: invalid brackets" << endl;
+                return false;
+            }
+            opStack.pop();
+        }
+    }
+
+    while (!opStack.empty()) {
+        if (opStack.top().type == 3 || opStack.top().type == 4) {
+            cerr << "Syntax error: open bracket" << endl;
+            return false;
+        }
+        postfix.push_back(opStack.top());
+        opStack.pop();
+    }
+
+    return true;
+}
+
+void extractVars(vector<Token>& postfix, vector<string>& vars) {
+    map<string, int> seen;
+    for (int i = 0; i < (int)postfix.size(); i++) {
+        if (postfix[i].type == 1) {
+            string& name = postfix[i].sval;
+            if (seen.find(name) == seen.end()) {
+                seen[name] = 1;
+                vars.push_back(name);
+            }
+        }
+    }
 }
