@@ -69,7 +69,7 @@ int main(){
     }
 
     cout << postfixStr << endl;
-    cout << result << endl;
+    cout << result;
 
 
     return 0;
