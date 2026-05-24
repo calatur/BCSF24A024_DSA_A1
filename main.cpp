@@ -33,7 +33,6 @@ int eval(vector<Token>& postfix, map<string, int>& varValues, int& result);
 
 int main(){
     string in;
-    cout << "Enter the expression: ";
     getline(cin, in);
 
     vector<Token> tokens, postfix;
