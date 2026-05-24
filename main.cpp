@@ -21,13 +21,14 @@ struct Token {
     int ival;     // numbers
 };
 
-int eval (string& in);
+
 int precedence(char op);
 char leftBracket(char right);
-bool tokenize(const string& in, vector<Token>& tokens);
+bool tokenize(string& in, vector<Token>& tokens);
 bool validate(vector<Token>& tokens);
 bool convert(vector<Token>& infix, vector<Token>& postfix);
 void extractVars(vector<Token>& postfix, vector<string>& vars);
+int eval(vector<Token>& postfix, map<string, int>& varValues, int& result);
 
 
 int main(){
@@ -35,20 +36,10 @@ int main(){
     cout << "Enter the expression: ";
     getline(cin, in);
 
-    vector<Token> tokens;
-    if (!tokenize(in, tokens)) return 1;
-
-    if (!validate(tokens)) return 1;
-
-    vector<Token> postfix;
-    if (!convert(tokens, postfix)) return 1;
-
-    string postfixStr = "";
-    for (int i = 0; i < (int)postfix.size(); i++) {
-        postfixStr += postfix[i].sval;
-        if (i != (int)postfix.size() - 1) postfixStr += " ";
+    vector<Token> tokens, postfix;
+    if ((!tokenize(in, tokens)) || (!validate(tokens)) || (!convert(tokens, postfix))){
+        return 1;
     }
-    cout << postfixStr << endl;
 
     vector<string> vars;
     extractVars(postfix, vars);
@@ -64,8 +55,25 @@ int main(){
         varValues[vars[i]] = val;
     }
 
+    int result = 0;
+    int ret = eval(postfix, varValues, result);
+    if (ret != 0){
+        return ret;
+    }
 
-    return eval(in);
+    string postfixStr = "";
+    for (int i = 0; i < (int)postfix.size(); i++) {
+        postfixStr += postfix[i].sval;
+        if (i != (int)postfix.size() - 1){
+            postfixStr += " ";
+        }
+    }
+
+    cout << postfixStr << endl;
+    cout << result << endl;
+
+
+    return 0;
 }
 
 
@@ -92,7 +100,7 @@ char leftBracket(char right) {
     return res;
 }
 
-bool tokenize(const string& in, vector<Token>& tokens) {
+bool tokenize(string& in, vector<Token>& tokens) {
     int i = 0;
     int n = (int)in.size();
     bool res = true, flag = true;
@@ -298,4 +306,58 @@ void extractVars(vector<Token>& postfix, vector<string>& vars) {
             }
         }
     }
+}
+
+
+int eval(vector<Token>& postfix, map<string, int>& varValues, int& result) {
+    stack<int> s;
+
+    for (int i = 0; i < (int)postfix.size(); i++) {
+        Token& t = postfix[i];
+        if (t.type == 0) {
+            s.push(t.ival);
+        }
+        else if (t.type == 1) {
+            map<string, int>::iterator it = varValues.find(t.sval);
+            if (it == varValues.end()){
+                cerr << "Runtime error: no value for variable '" << t.sval << "'" << endl;
+                return 2;
+            }
+            s.push(it->second);
+        }
+        else if (t.type == 2) {
+            if (s.size() < 2) {
+                cerr << "Logical error: insufficient operands for operator '" << t.sval << "'" << endl;
+                return 3;
+            }
+            int b = s.top(); 
+            s.pop();
+            int a = s.top();
+            s.pop();
+            char op = t.sval[0];
+            if (op == '+'){
+                s.push(a + b);
+            }
+            else if (op == '-'){
+                s.push(a - b);
+            }
+            else if (op == '*'){
+                s.push(a * b);
+            }
+            else if (op == '/') {
+                if (b == 0) {
+                    cerr << "Runtime error: division by zero" << endl;
+                    return 2;
+                }
+                s.push(a / b);
+            }
+        }
+    }
+
+    if (s.size() != 1) {
+        cerr << "Logical error: malformed expression (too many operands)" << endl;
+        return 3;
+    }
+    result = s.top();
+    return 0;
 }
